@@ -1,181 +1,195 @@
 extends Control
 
+const LOG_INTERVAL: float = 5.0
+const MAX_ROWS: int = 500
+
+# Если C8 соответствует адресу 7, поменяй значение на 7.
+const C8_ADDRESS: int = 8
+
 @onready var status_label: Label = $StatusLabel
-@onready var input_register_0_label: Label = $InputRegister0Label
-@onready var input_register_1_label: Label = $InputRegister1Label
+@onready var poller = $ModbusPoller
+@onready var register_table: Tree = $RegisterTable
 
-const UNIT: int = 1
-const POLL_INTERVAL_MS: int = 20
-const RESPONSE_TIMEOUT_MS: int = 1000
+@onready var _register_labels: Dictionary = {
+	0: $VBoxContainer/InputRegister0Label,
+	1: $VBoxContainer/InputRegister1Label,
+	2: $VBoxContainer/InputRegister2Label
+}
 
-# Порядок опроса:
-# coils 5–9, затем Input Registers 0 и 1.
-var _poll_items: Array[Dictionary] = [
-	{"fc": 0x01, "address": 5},
-	{"fc": 0x01, "address": 6},
-	{"fc": 0x01, "address": 7},
-	{"fc": 0x01, "address": 8},
-	{"fc": 0x01, "address": 9},
-	{"fc": 0x04, "address": 0},
-	{"fc": 0x04, "address": 1},
-]
+var _latest_values: Dictionary = {}
 
-var _poll_index: int = 0
-var _pending_request_id: int = -1
-var _next_poll_at: int = 0
-var _poll_enabled: bool = true
+var _c8_value: bool = false
+var _c8_received: bool = false
+
+var _table_root: TreeItem
+var _log_timer: Timer
 
 
 func _ready() -> void:
-	input_register_0_label.text = "—"
-	input_register_1_label.text = "—"
+	for label: Label in _register_labels.values():
+		label.text = "—"
+
+	_setup_table()
+
 	Serial.connection_changed.connect(_on_connection_changed)
-
-	Modbus.coil_received.connect(_on_coil_received)
-	Modbus.coil_written.connect(_on_coil_written)
-	Modbus.input_register_received.connect(_on_input_register_received)
-	Modbus.request_failed.connect(_on_request_failed)
-
-	Modbus.response_timeout_ms = RESPONSE_TIMEOUT_MS
-
-	# Расписанием смешанного опроса управляет этот Control.
-	# Встроенный опрос Modbus не запускаем.
-	Modbus.stop_polling()
+	poller.coil_updated.connect(_on_coil_updated)
+	poller.input_register_updated.connect(
+		_on_input_register_updated
+	)
 
 	_on_connection_changed(
 		Serial.connected,
 		Serial.selected_port
 	)
 
+	_log_timer = Timer.new()
+	_log_timer.wait_time = LOG_INTERVAL
+	_log_timer.one_shot = false
+	add_child(_log_timer)
 
-func _process(_delta: float) -> void:
-	if not _poll_enabled or not Serial.connected:
-		return
-
-	# Не ставим следующий запрос опроса,
-	# пока предыдущий не завершился.
-	if _pending_request_id != -1:
-		return
-
-	var now := Time.get_ticks_msec()
-
-	if now < _next_poll_at:
-		return
-
-	var item: Dictionary = _poll_items[_poll_index]
-	var function: int = int(item["fc"])
-	var address: int = int(item["address"])
-	var request_id: int = -1
-
-	match function:
-		0x01:
-			request_id = Modbus.read_coil(UNIT, address)
-
-		0x04:
-			request_id = Modbus.read_input_register(UNIT, address)
-
-	if request_id == -1:
-		# Например, очередь заполнена.
-		# Позже повторяем тот же адрес.
-		_next_poll_at = now + POLL_INTERVAL_MS
-		return
-
-	_pending_request_id = request_id
-	_poll_index = (_poll_index + 1) % _poll_items.size()
+	_log_timer.timeout.connect(_append_table_row)
+	_log_timer.start()
 
 
-func _exit_tree() -> void:
-	_poll_enabled = false
+func _setup_table() -> void:
+	register_table.clear()
+	register_table.columns = 5
+	register_table.hide_root = true
+	register_table.column_titles_visible = true
+
+	register_table.set_column_title(0, "Время")
+	register_table.set_column_title(1, "in: EXC C8")
+	register_table.set_column_title(2, "out: TOP")
+	register_table.set_column_title(3, "out: BOT")
+	register_table.set_column_title(4, "out: EXC RESET")
+
+	# Выравнивание заголовков по левому краю.
+	for column in range(register_table.columns):
+		register_table.set_column_title_alignment(
+			column,
+			HORIZONTAL_ALIGNMENT_LEFT
+		)
+
+	register_table.set_column_custom_minimum_width(0, 180)
+
+	for column in range(1, register_table.columns):
+		register_table.set_column_custom_minimum_width(
+			column, 100
+		)
+
+	register_table.set_column_custom_minimum_width(4, 150)
+
+	_table_root = register_table.create_item()
 
 
 func _on_connection_changed(
 	is_connected: bool,
 	port: String
 ) -> void:
-	if is_connected:
-		status_label.text = "Подключено: " + port
-
-		# После подключения начинаем проход с первого адреса.
-		_poll_index = 0
-		_next_poll_at = Time.get_ticks_msec() + POLL_INTERVAL_MS
-	else:
-		status_label.text = "Устройство не подключено"
-
-		# Запросы при отключении сбрасывает сам Modbus.
-		_pending_request_id = -1
-
-
-func _complete_poll_request(request_id: int) -> void:
-	if request_id != _pending_request_id:
-		return
-
-	_pending_request_id = -1
-	_next_poll_at = Time.get_ticks_msec() + POLL_INTERVAL_MS
-
-
-func _on_coil_received(
-	request_id: int,
-	unit: int,
-	address: int,
-	value: bool
-) -> void:
-	_complete_poll_request(request_id)
-
-	print(
-		"RX №", request_id,
-		": устройство=", unit,
-		", coil=", address,
-		", значение=", value
+	status_label.text = (
+		"Подключено: " + port
+		if is_connected
+		else "Устройство не подключено"
 	)
 
+	# Не используем старые значения после переподключения.
+	_latest_values.clear()
+	_c8_value = false
+	_c8_received = false
 
-func _on_input_register_received(
-	request_id: int,
+	for label: Label in _register_labels.values():
+		label.text = "—"
+		label.remove_theme_color_override("font_color")
+
+
+func _on_input_register_updated(
 	unit: int,
 	address: int,
 	value: int
 ) -> void:
-	# Обязательно оставляем: разрешает следующий запрос опроса.
-	_complete_poll_request(request_id)
-
-	if unit != UNIT:
+	if unit != poller.unit:
 		return
 
-	match address:
-		0:
-			input_register_0_label.text = str(value)
+	var label: Label = _register_labels.get(address)
 
-		1:
-			input_register_1_label.text = str(value)
+	if label == null:
+		return
 
-	print(
-		"RX №", request_id,
-		": устройство=", unit,
-		", input register=", address,
-		", значение=", value
+	_latest_values[address] = value
+
+	label.text = str(value)
+	label.add_theme_color_override(
+		"font_color",
+		Color.RED if value == 0 else Color.GREEN
 	)
 
 
-func _on_coil_written(
-	request_id: int,
+func _on_coil_updated(
 	unit: int,
 	address: int,
 	value: bool
 ) -> void:
+	if unit != poller.unit:
+		return
+
+	if address == C8_ADDRESS:
+		_c8_value = value
+		_c8_received = true
+
 	print(
-		"Запись подтверждена №", request_id,
-		": устройство=", unit,
+		"Устройство=", unit,
 		", coil=", address,
 		", значение=", value
 	)
 
 
-func _on_request_failed(
-	request_id: int,
-	reason: String
-) -> void:
-	_complete_poll_request(request_id)
+func _append_table_row() -> void:
+	if not Serial.connected:
+		return
 
-	push_warning(
-		"Modbus, запрос №%d: %s" % [request_id, reason]
+	# Для таблицы нужны значения регистров 0, 1 и 2.
+	for address in range(3):
+		if not _latest_values.has(address):
+			return
+
+	var row: TreeItem = register_table.create_item(
+		_table_root
 	)
+
+	# Столбец 0 — время.
+	row.set_text(
+		0,
+		Time.get_datetime_string_from_system(false, true)
+	)
+
+	# Столбец 1 — C8 coil.
+	if _c8_received:
+		row.set_text(1, "1" if _c8_value else "0")
+		row.set_custom_color(
+			1,
+			Color.GREEN if _c8_value else Color.RED
+		)
+	else:
+		row.set_text(1, "—")
+
+	# Столбцы 2, 3 и 4 — регистры 0, 1 и 2.
+	# 0 -> out: TOP
+	# 1 -> out: BOT
+	# 2 -> out: EXC RESET
+	for address in range(3):
+		var value: int = int(_latest_values[address])
+		var column: int = address + 2
+
+		row.set_text(column, str(value))
+		row.set_custom_color(
+			column,
+			Color.RED if value == 0 else Color.GREEN
+		)
+
+	# Оставляем только последние MAX_ROWS строк.
+	while _table_root.get_child_count() > MAX_ROWS:
+		var oldest_row: TreeItem = _table_root.get_child(0)
+		oldest_row.free()
+
+	# Автопрокрутка к последней добавленной строке.
+	register_table.scroll_to_item.call_deferred(row)

@@ -1,6 +1,7 @@
-[gd_scene load_steps=3 format=3 uid="uid://byuxe4sf61kc8"]
+[gd_scene load_steps=4 format=3 uid="uid://byuxe4sf61kc8"]
 
 [ext_resource type="Script" uid="uid://bwldwxvvgk12l" path="res://scripts/main.gd" id="1_0xm2m"]
+[ext_resource type="Script" uid="uid://wyaloxrcol2f" path="res://serial/modbus_poller.gd" id="3_1bvp3"]
 [ext_resource type="Script" uid="uid://cpwr2i7o22kd5" path="res://scripts/buttons/modbus_coil_button.gd" id="3_h2yge"]
 
 [node name="Control" type="Control"]
@@ -99,16 +100,29 @@ offset_right = 202.0
 offset_bottom = 298.0
 text = "PROTECTIONS С26"
 
-[node name="InputRegister0Label" type="Label" parent="."]
-layout_mode = 0
-offset_left = 437.0
-offset_top = 112.0
-offset_right = 477.0
-offset_bottom = 135.0
+[node name="ModbusPoller" type="Node" parent="."]
+script = ExtResource("3_1bvp3")
 
-[node name="InputRegister1Label" type="Label" parent="."]
+[node name="VBoxContainer" type="VBoxContainer" parent="."]
 layout_mode = 0
-offset_left = 441.0
-offset_top = 167.0
-offset_right = 481.0
-offset_bottom = 190.0
+offset_left = 422.0
+offset_top = 56.0
+offset_right = 462.0
+offset_bottom = 197.0
+theme_override_constants/separation = 36
+
+[node name="InputRegister2Label" type="Label" parent="VBoxContainer"]
+layout_mode = 2
+
+[node name="InputRegister0Label" type="Label" parent="VBoxContainer"]
+layout_mode = 2
+
+[node name="InputRegister1Label" type="Label" parent="VBoxContainer"]
+layout_mode = 2
+
+[node name="RegisterTable" type="Tree" parent="."]
+layout_mode = 0
+offset_left = 470.0
+offset_top = 7.0
+offset_right = 1141.0
+offset_bottom = 620.0

@@ -83,15 +83,48 @@ func stop_polling() -> void:
 	# Does not cancel a request already queued or transmitted.
 	_poll_enabled = false
 
-func _enqueue(unit: int, function: int, address: int, value: bool) -> int:
+func _enqueue(
+	unit: int,
+	function: int,
+	address: int,
+	value: bool
+) -> int:
 	if not Serial.connected or _queue.size() >= max_queue_size:
 		return -1
-	if unit < 1 or unit > 247 or address < 0 or address > 65535:
+
+	if unit < 1 or unit > 247:
 		return -1
+
+	if address < 0 or address > 65535:
+		return -1
+
+	# Адрес для отправки устройству.
+	var wire_address: int = ModbusConfig.to_wire_address(address)
+
+	if wire_address < 0 or wire_address > 65535:
+		push_warning(
+			"Адрес %d после пересчёта стал %d: вне диапазона 0–65535"
+			% [address, wire_address]
+		)
+		return -1
+
 	var id := _next_id
 	_next_id += 1
-	_queue.append({"id": id, "unit": unit, "fc": function,
-		"address": address, "value": value})
+
+	_queue.append({
+		"id": id,
+		"unit": unit,
+		"fc": function,
+
+		# Исходный адрес для логики программы.
+		"address": address,
+
+		# Пересчитанный адрес для пакета Modbus.
+		"wire_address": wire_address,
+
+		"value": value
+	})
+
 	return id
 
 func _process(_delta: float) -> void:
@@ -133,12 +166,19 @@ func _send_next() -> void:
 		function
 	])
 
-	_append_u16(frame, int(_active.address))
+	# В пакет отправляем адрес со смещением.
+	_append_u16(frame, int(_active.wire_address))
 
 	if function == 0x01 or function == 0x04:
 		_append_u16(frame, 1)
 	else:
-		_append_u16(frame, 0xFF00 if bool(_active.value) else 0x0000)
+		_append_u16(
+			frame,
+			0xFF00 if bool(_active.value) else 0x0000
+		)
+
+	# Далее оставьте существующий код функции:
+	# расчёт CRC, установка тайм-аута и отправка.
 
 	var crc := _crc16(frame)
 	frame.append(crc & 0xFF)

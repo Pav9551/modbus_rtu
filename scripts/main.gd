@@ -132,13 +132,18 @@ func _on_coil_updated(
 	if unit != poller.unit:
 		return
 
+	# Сравниваем исходные адреса программы.
 	if address == C8_ADDRESS:
 		_c8_value = value
 		_c8_received = true
 
+	# Для вывода вычисляем адрес устройства.
+	var device_address: int = ModbusConfig.to_wire_address(address)
+
 	print(
 		"Устройство=", unit,
-		", coil=", address,
+		", coil в программе=", address,
+		", coil на устройстве=", device_address,
 		", значение=", value
 	)
 

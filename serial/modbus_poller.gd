@@ -90,6 +90,7 @@ func _on_connection_changed(
 	if is_connected:
 		_index = 0
 		_next_poll_at = Time.get_ticks_msec() + poll_interval_ms
+	RegisterData.clear_values()
 
 
 func _complete_request(request_id: int) -> bool:

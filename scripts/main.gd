@@ -3,8 +3,13 @@ extends Control
 const LOG_INTERVAL: float = 5.0
 const MAX_ROWS: int = 500
 
-# Если C8 соответствует адресу 7, поменяй значение на 7.
+# Адреса в программе, приходящие в сигнале coil_updated.
+# Использован тот же подход, что и в твоём C8_ADDRESS = 8.
+const C5_ADDRESS: int = 5
 const C8_ADDRESS: int = 8
+const C16_ADDRESS: int = 6
+const C7_ADDRESS: int = 7
+const C26_ADDRESS: int = 9
 
 @onready var status_label: Label = $StatusLabel
 @onready var poller = $ModbusPoller
@@ -110,12 +115,16 @@ func _on_input_register_updated(
 	if unit != poller.unit:
 		return
 
+	# Сохраняем каждый полученный регистр в общее хранилище.
+	RegisterData.input_registers[address] = value
+
+	# Сохраняем данные для существующей таблицы.
+	_latest_values[address] = value
+
 	var label: Label = _register_labels.get(address)
 
 	if label == null:
 		return
-
-	_latest_values[address] = value
 
 	label.text = str(value)
 	label.add_theme_color_override(
@@ -132,20 +141,37 @@ func _on_coil_updated(
 	if unit != poller.unit:
 		return
 
-	# Сравниваем исходные адреса программы.
-	if address == C8_ADDRESS:
-		_c8_value = value
-		_c8_received = true
+	match address:
+		C5_ADDRESS:
+			RegisterData.c5_value = value
+			RegisterData.c5_received = true
 
-	# Для вывода вычисляем адрес устройства.
-	var device_address: int = ModbusConfig.to_wire_address(address)
+		C8_ADDRESS:
+			RegisterData.c8_value = value
+			RegisterData.c8_received = true
 
-	print(
+			# Оставляем обновление существующей таблицы.
+			_c8_value = value
+			_c8_received = true
+
+		C16_ADDRESS:
+			RegisterData.c16_value = value
+			RegisterData.c16_received = true
+
+		C7_ADDRESS:
+			RegisterData.c7_value = value
+			RegisterData.c7_received = true
+
+		C26_ADDRESS:
+			RegisterData.c26_value = value
+			RegisterData.c26_received = true
+
+	"""print(
 		"Устройство=", unit,
 		", coil в программе=", address,
 		", coil на устройстве=", device_address,
 		", значение=", value
-	)
+	)"""
 
 
 func _append_table_row() -> void:

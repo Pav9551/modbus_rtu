@@ -1,8 +1,11 @@
-[gd_scene load_steps=4 format=3 uid="uid://byuxe4sf61kc8"]
+[gd_scene load_steps=7 format=3 uid="uid://byuxe4sf61kc8"]
 
 [ext_resource type="Script" uid="uid://bwldwxvvgk12l" path="res://scripts/main.gd" id="1_0xm2m"]
 [ext_resource type="Script" uid="uid://wyaloxrcol2f" path="res://serial/modbus_poller.gd" id="3_1bvp3"]
 [ext_resource type="Script" uid="uid://cpwr2i7o22kd5" path="res://scripts/buttons/modbus_coil_button.gd" id="3_h2yge"]
+[ext_resource type="Script" uid="uid://csb3xmnn8u2e5" path="res://scripts/SCADA/ScadaSender.gd" id="6_7mycd"]
+[ext_resource type="Script" uid="uid://d21fvm4una5vv" path="res://scripts/Simulators/commands.gd" id="6_272bh"]
+[ext_resource type="Script" uid="uid://d0mxn6p73jq0g" path="res://scripts/Simulators/excitation.gd" id="7_272bh"]
 
 [node name="Control" type="Control"]
 layout_mode = 3
@@ -126,3 +129,33 @@ offset_left = 470.0
 offset_top = 7.0
 offset_right = 1141.0
 offset_bottom = 620.0
+
+[node name="Simplight" type="Node" parent="."]
+
+[node name="VBoxContainer_scada" type="VBoxContainer" parent="Simplight"]
+offset_left = 64.0
+offset_top = 380.0
+offset_right = 104.0
+offset_bottom = 521.0
+theme_override_constants/separation = 36
+
+[node name="ValueLabel" type="Label" parent="Simplight/VBoxContainer_scada"]
+layout_mode = 2
+
+[node name="StatusLabel" type="Label" parent="Simplight/VBoxContainer_scada"]
+layout_mode = 2
+
+[node name="write" type="Button" parent="Simplight"]
+offset_left = 215.0
+offset_top = 564.0
+offset_right = 340.0
+offset_bottom = 605.0
+
+[node name="ScadaSender" type="Node" parent="."]
+script = ExtResource("6_7mycd")
+
+[node name="ExcitationSim" type="Node" parent="."]
+script = ExtResource("7_272bh")
+
+[node name="SimulationCommands" type="Node" parent="."]
+script = ExtResource("6_272bh")

@@ -19,6 +19,8 @@ config/icon="res://icon.svg"
 
 Serial="*res://serial/ch340_serial.gd"
 Modbus="*res://serial/modbus_rtu.gd"
+RegisterData="*res://scripts/RegisterData.gd"
+GeneratorState="*res://scripts/Generator_state.gd"
 
 [dotnet]
 
